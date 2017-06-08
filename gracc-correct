@@ -61,7 +61,6 @@ class Correction(object):
                 print r
                 return False
             else:
-                print r
                 print 'Correction %s updated.' % d['_id']
         return True
 

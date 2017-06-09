@@ -64,21 +64,30 @@ class Correction(object):
                 print 'Correction %s updated.' % d['_id']
         return True
 
-    def destroy(self, es, index, doc):
+    def destroy(self, es, index, doc=None, id=None):
         """
         Delete correction in the given index in Elasticsearch client es.
         :param dict doc: a dictionary containing the correction fields (keys and correction)
         :return bool: success or failure
         """
-        for k in self.keys():
-            if k not in doc.keys():
-                print 'Error: missing key %s'%k
-                return False
-        docs = self.get(es,index,doc)
+        if doc is not None:
+            for k in self.keys():
+                if k not in doc.keys():
+                    print 'Error: missing key %s'%k
+                    return False
+            docs = self.get(es,index,doc)
+        elif id is not None:
+            docs = self.get(es,index,query='_id:%s'%id)
+        else:
+            print 'Error: destroy() requires either doc or id'
+            return False
         if len(docs) == 0:
             print 'Error: correction doesn\'t exist'
             return False
         for d in docs:
+            print self.filter(d['_source'])
+            if raw_input('Delete record? (Y/N) ').upper() != 'Y':
+                continue
             r = es.delete(index=index, doc_type=self.ctype, id=d['_id'])
             if r['_shards']['successful'] < 1:
                 print 'Error deleting correction. Response:'
@@ -88,19 +97,25 @@ class Correction(object):
                 print 'Correction %s deleted.' % r['_id']
         return True
 
-    def get(self, es, index, doc={}, size=100):
+    def get(self, es, index, doc={}, size=100, query=None):
         """
-        Fetch correction from the given index in Elasticsearch client es.
+        Fetch correction(s) from the given index in Elasticsearch client es.
         :param dict doc: a dictionary containing the fields to be matched. The corrected field is dropped.
+        :param int size: max number of documents to return.
+        :param query str: query string to limit results.
         :return list: documents (empty if no matches or error)
         """
+        if query is not None:
+            q = '(%s)'%query
+        else:
+            q = '*'
+
         if len(doc.keys()) > 0:
             for k in doc.keys():
                 if k not in self.keys():
                     print 'Error: invalid key %s for correction %s' % (k, self.ctype)
-            q = ' AND '.join([k+':'+v for k, v in doc.iteritems() if k != self.correction])
-        else:
-            q = '*'
+            q += ' AND ' + ' AND '.join([k+':'+v for k, v in doc.iteritems() if k != self.correction])
+
         r = es.search(index=index, doc_type=self.ctype, q=q, size=size)
         try:
             return r['hits']['hits']
@@ -119,6 +134,17 @@ class Correction(object):
         doc[self.correction] = raw_input('Corrected %s: '%self.key)
         return doc
 
+    def filter(self, doc):
+        """
+        Filters doc for only match and correction keys.
+        :return dict: filtered doc
+        """
+        d = {}
+        for k,v in doc.iteritems():
+            if k in self.keys():
+                d[k]=v
+        return d
+
 
 corrections = {
     'vo': Correction(ctype='vo',
@@ -132,18 +158,36 @@ corrections = {
 
 def main():
     parser = argparse.ArgumentParser('Manage GRACC corrections.')
-    parser.add_argument('command', choices=['list','add','update','delete'],
-                        help='Command to perform')
     parser.add_argument('type', choices=corrections.keys(),
                         help='Correction type')
-    parser.add_argument('doc', nargs='?', default=None,
-                        help='Option JSON document with correction source.')
     parser.add_argument('--url', type=str, default='http://localhost:9200',
                         help='Elasticsearch URL')
     parser.add_argument('--index', type=str, default='gracc.corrections-0',
                         help='Index containing corrections')
-    parser.add_argument('--size', type=int, default=1000,
+    subparsers = parser.add_subparsers(dest='command')
+
+    list_parser = subparsers.add_parser('list',help='print existing corrections')
+    list_parser.add_argument('--size', type=int, default=1000,
                         help='Max number of documents to list.')
+    list_parser.add_argument('--query', type=str, default=None,
+                        help='Search query to limit results.')
+    list_parser.add_argument('--doc', type=str, default=None,
+                        help='Optional JSON document with correction source to match.')
+
+    add_parser = subparsers.add_parser('add',help='create new correction')
+    add_parser.add_argument('--doc', type=str, default=None,
+                        help='Optional JSON document with correction source to add.')
+
+    update_parser = subparsers.add_parser('update',help='update existing correction')
+    update_parser.add_argument('--doc', type=str, default=None,
+                        help='Optional JSON document with correction source to update.')
+
+    delete_parser = subparsers.add_parser('delete',help='delete existing correction(s)')
+    delete_parser.add_argument('--doc', type=str, default=None,
+                        help='Optional JSON document with correction source to delete.')
+    delete_parser.add_argument('--id', type=str, default=None,
+                        help='Document id to delete.')
+
     args = parser.parse_args()
 
     es = Elasticsearch(args.url)
@@ -152,14 +196,15 @@ def main():
         doc = json.loads(args.doc)
     elif args.command == 'list':
         doc = {}
+    elif args.command == 'delete' and args.id is not None:
+        doc = None
     else:
         doc = correction.prompt()
 
     if args.command == 'list':
-        docs = correction.get(es,args.index,doc,size=args.size)
-        print '\t'.join(['id']+correction.keys())
+        docs = correction.get(es,args.index,doc,size=args.size,query=args.query)
         for d in docs:
-            print '\t'.join([d['_id']]+['%s'%d['_source'][k] for k in correction.keys()])
+            print d['_id'],json.dumps(correction.filter(d['_source']))
     elif args.command == 'add':
         if not correction.create(es,args.index,doc):
             if raw_input('Create failed. Attempt update instead? (Y/N) ').upper() == 'Y':
@@ -169,7 +214,7 @@ def main():
             if raw_input('Update failed. Attempt create instead? (Y/N) ').upper() == 'Y':
                 correction.create(es,args.index,doc)
     elif args.command == 'delete':
-        correction.destroy(es,args.index,doc)
+        correction.destroy(es,args.index,doc,id=args.id)
     else:
         print '%s not implemented'%args.command
         sys.exit(1)

@@ -5,3 +5,11 @@ Syracuse submitted "Payload" type records with Host_description set to the hostn
 
  AS-124CARN-20-S3-its-c6-osg-20160824
 https://gracc.opensciencegrid.org/kibana/app/kibana#/doc/gracc.osg.summary/gratia.osg.summary2-oim/JobUsageRecordSummary?id=992946121&_g=(refreshInterval:(display:Off,pause:!f,value:0),time:(from:now-1y,mode:quick,to:now))
+
+
+AS*
+AAF*
+ARCH*
+BFAS*
+CRUSH-OSG*
+

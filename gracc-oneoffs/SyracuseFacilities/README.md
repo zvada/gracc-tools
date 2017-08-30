@@ -11,5 +11,8 @@ AS*
 AAF*
 ARCH*
 BFAS*
+
+The CRUSH-OSG looks like a different problem.  It looks like those records are coming from regular jobs through a CE, but the ResourceType is being reported as "Payload" rather than "Batch"
+
 CRUSH-OSG*
 

@@ -47,6 +47,6 @@ print "Query got %i hits" % response.hits.total
 
 for hit in s.scan():
     if hit.ProjectName != hit.VOName:
-        print "Deleting id = %s, with ProjectName = %s and VOName = %s" % (hist.meta.id, hit.ProjectName, hit.VOName)
+        print "Deleting id = %s, with ProjectName = %s and VOName = %s" % (hit.meta.id, hit.ProjectName, hit.VOName)
         es.delete(index=hit.meta.index, doc_type=hit.meta.doc_type, id=hit.meta.id)
 
